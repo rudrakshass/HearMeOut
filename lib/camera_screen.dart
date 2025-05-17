@@ -124,12 +124,21 @@ class _CameraScreenState extends State<CameraScreen> {
     super.dispose();
   }
   
-  // Initialize TTS settings
+  // Initialize text-to-speech with optimal settings for accessibility
   Future<void> _initTts() async {
+    // Set language to English
     await _flutterTts.setLanguage("en-US");
-    await _flutterTts.setSpeechRate(0.5); // Slightly slower rate for better comprehension
-    await _flutterTts.setVolume(1.0);
-    await _flutterTts.setPitch(1.0);
+    
+    // Optimize speech parameters for clarity
+    await _flutterTts.setSpeechRate(0.5);  // Slower rate for better comprehension
+    await _flutterTts.setPitch(1.0);       // Natural pitch
+    await _flutterTts.setVolume(1.0);      // Maximum volume
+    
+    // Set enhanced quality where available
+    await _flutterTts.setQueueMode(1);     // Add to queue instead of interrupting
+    
+    // Log TTS initialization
+    debugPrint('Text-to-speech initialized');
   }
 
   // Function to enhance image before processing
@@ -327,14 +336,14 @@ class _CameraScreenState extends State<CameraScreen> {
     await _flutterTts.speak(message);
   }
 
-  // Function to capture an image and process it
+  // Function to capture an image and process it with OCR, object detection, and TTS
   Future<void> _captureImage() async {
     if (!_isInitialized || _controller == null || !_controller!.value.isInitialized || _isProcessing) {
       return;
     }
     
-    // Provide accessibility feedback that we're taking a photo
-    _provideAccessibilityFeedback("Taking photo");
+    // Provide immediate audio feedback for blind users
+    _provideAccessibilityFeedback("Capturing image");
 
     setState(() {
       _isProcessing = true; // Set processing flag to prevent multiple captures
@@ -347,7 +356,7 @@ class _CameraScreenState extends State<CameraScreen> {
       // Add a small delay for camera to fully stabilize focus (improves clarity)
       await Future.delayed(const Duration(milliseconds: 500));
       
-      // Take the picture with increased quality
+      // Take the picture
       final XFile image = await _controller!.takePicture();
       
       // Get temporary directory
@@ -360,37 +369,20 @@ class _CameraScreenState extends State<CameraScreen> {
       // Copy the image to our new path
       await File(image.path).copy(filePath);
       
-      if (mounted) {
-        // Show a snackbar with the image path
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Image saved to: $filePath'),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
+      // Provide audio feedback that processing has started
+      await _provideAccessibilityFeedback("Processing image, please wait");
       
       debugPrint('Image saved at: $filePath');
+      debugPrint('Starting OCR and object detection...');
       
-      // Process the image for text recognition and object detection
-      debugPrint('Starting image analysis...');
+      // Run text recognition and object detection in parallel for efficiency
+      final futures = await Future.wait([
+        _processImageForText(filePath),
+        _detectObjects(filePath),
+      ]);
       
-      // Show a processing indicator
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Analyzing image...'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-        
-        // Provide accessibility feedback
-        _provideAccessibilityFeedback("Analyzing image for text and objects");
-      }
-      
-      // Run text recognition and object detection in parallel
-      final String recognizedText = await _processImageForText(filePath);
-      final List<DetectedObject> detectedObjects = await _detectObjects(filePath);
+      final String recognizedText = futures[0] as String;
+      final List<DetectedObject> detectedObjects = futures[1] as List<DetectedObject>;
       
       // Store the detected objects for UI display
       _detectedObjects = detectedObjects;
@@ -398,52 +390,75 @@ class _CameraScreenState extends State<CameraScreen> {
       debugPrint('Recognized text: $recognizedText');
       debugPrint('Detected ${detectedObjects.length} objects');
       
-      // Create a summary of detected objects for speech
+      // Create a summary of detected objects for TTS
       String objectsSummary = '';
       if (detectedObjects.isNotEmpty) {
-        final Set<String> uniqueLabels = {};
+        final Map<String, double> bestLabels = {};
+        
+        // Get the best confidence label for each object
         for (final object in detectedObjects) {
           for (final label in object.labels) {
-            // Only include labels with reasonable confidence
-            if (label.confidence > 0.5) {
-              uniqueLabels.add(label.text);
+            // Store the highest confidence for each label
+            if (!bestLabels.containsKey(label.text) || 
+                label.confidence > bestLabels[label.text]!) {
+              bestLabels[label.text] = label.confidence;
             }
           }
         }
-        if (uniqueLabels.isNotEmpty) {
-          objectsSummary = "Objects detected: ${uniqueLabels.join(', ')}"; 
+        
+        // Filter to only include reasonable confidence
+        final List<String> filteredLabels = [];
+        bestLabels.forEach((label, confidence) {
+          if (confidence > 0.6) {
+            filteredLabels.add(label);
+          }
+        });
+        
+        if (filteredLabels.isNotEmpty) {
+          objectsSummary = "Objects detected: ${filteredLabels.join(', ')}"; 
+        }
+      }
+      
+      // Prepare text for TTS (truncate if too long)
+      String ttsText = '';
+      if (recognizedText.isNotEmpty && !recognizedText.contains("No text detected")) {
+        if (recognizedText.length > 150) {
+          ttsText = "${recognizedText.substring(0, 147)}... and more text";
+        } else {
+          ttsText = recognizedText;
         }
       }
       
       // Show the results in a dialog
       if (mounted) {
         _showRecognizedTextDialog(recognizedText);
-        
-        // Provide accessibility feedback with the recognized text and objects
-        // Use a shortened version for TTS if text is too long
-        String ttsText = recognizedText;
-        if (recognizedText.length > 100) {
-          ttsText = "${recognizedText.substring(0, 97)}... and more";
-        }
-        
-        // Combine text and object feedback
-        String feedbackText = '';
-        if (ttsText.isNotEmpty) {
-          feedbackText = "Text found: $ttsText";
-        }
-        if (objectsSummary.isNotEmpty) {
-          if (feedbackText.isNotEmpty) {
-            feedbackText += ". ";
-          }
-          feedbackText += objectsSummary;
-        }
-        
-        if (feedbackText.isEmpty) {
-          feedbackText = "No text or objects detected";
-        }
-        
-        _provideAccessibilityFeedback(feedbackText);
       }
+      
+      // Create combined feedback for TTS
+      String feedbackText = '';
+      
+      // Start with objects as they're often more important for context
+      if (objectsSummary.isNotEmpty) {
+        feedbackText = objectsSummary;
+      }
+      
+      // Then add text if available
+      if (ttsText.isNotEmpty) {
+        if (feedbackText.isNotEmpty) {
+          feedbackText += ". I also found text: ";
+        } else {
+          feedbackText = "Text found: ";
+        }
+        feedbackText += ttsText;
+      }
+      
+      // Handle case where nothing was detected
+      if (feedbackText.isEmpty) {
+        feedbackText = "No text or objects detected in this image";
+      }
+      
+      // Read out the results with TTS
+      await _provideAccessibilityFeedback(feedbackText);
       
       // Reset focus mode back to auto for preview
       await _controller!.setFocusMode(FocusMode.auto);
@@ -451,6 +466,9 @@ class _CameraScreenState extends State<CameraScreen> {
     } catch (e) {
       debugPrint('Error capturing or processing image: $e');
       if (mounted) {
+        // Provide audio feedback about the error
+        _provideAccessibilityFeedback("Error processing image");
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to process image: $e'),
@@ -501,14 +519,17 @@ class _CameraScreenState extends State<CameraScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // Camera preview that fills the screen
-          SizedBox.expand(
-            child: FittedBox(
-              fit: BoxFit.cover,
-              child: SizedBox(
-                width: _controller!.value.previewSize!.height * deviceRatio,
-                height: _controller!.value.previewSize!.height,
-                child: CameraPreview(_controller!),
+          // Camera preview that fills the screen with tap gesture
+          GestureDetector(
+            onTap: _isProcessing ? null : _captureImage,
+            child: SizedBox.expand(
+              child: FittedBox(
+                fit: BoxFit.cover,
+                child: SizedBox(
+                  width: _controller!.value.previewSize!.height * deviceRatio,
+                  height: _controller!.value.previewSize!.height,
+                  child: CameraPreview(_controller!),
+                ),
               ),
             ),
           ),
@@ -522,7 +543,7 @@ class _CameraScreenState extends State<CameraScreen> {
               padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
               color: Colors.black54,
               child: const Text(
-                'Position text in frame and tap the button to capture',
+                'Tap anywhere on screen to capture and analyze',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.white,
@@ -531,34 +552,27 @@ class _CameraScreenState extends State<CameraScreen> {
               ),
             ),
           ),
-        ],
-      ),
-      // Floating capture button at the bottom
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          // Primary capture button with accessibility support
-          Semantics(
-            label: 'Camera capture button',
-            hint: 'Double tap to take a photo and recognize text',
-            button: true,
-            enabled: !_isProcessing,
-            child: FloatingActionButton(
-              onPressed: _isProcessing ? null : _captureImage,
-              backgroundColor: _isProcessing ? Colors.grey : Colors.white,
-              child: _isProcessing 
-                ? const SizedBox(
-                    width: 24, 
-                    height: 24, 
-                    child: CircularProgressIndicator(strokeWidth: 2.0, color: Colors.black)
-                  )
-                : const Icon(Icons.camera_alt, color: Colors.black),
+          
+          // Processing indicator
+          if (_isProcessing)
+            Container(
+              color: Colors.black54,
+              child: const Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(color: Colors.white),
+                    SizedBox(height: 16),
+                    Text(
+                      'Processing...',
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ),
         ],
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 }
