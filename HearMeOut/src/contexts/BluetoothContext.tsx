@@ -30,7 +30,6 @@ interface BluetoothContextType {
   isScanning: boolean;
 }
 
-// Create context with default values
 const BluetoothContext = createContext<BluetoothContextType>({
   manager: null,
   isBluetoothEnabled: false,
@@ -138,18 +137,16 @@ export const BluetoothProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
           if (device && device.name) {
             // Add device if it has a name and isn't already in the list
-            device.isConnected().then(isConnected => {
-              setDiscoveredDevices(prev => {
-                const exists = prev.some(d => d.id === device.id);
-                if (exists) return prev;
-                
-                return [...prev, {
-                  id: device.id,
-                  name: device.name,
-                  isConnected,
-                  rssi: device.rssi ?? undefined,
-                }];
-              });
+            setDiscoveredDevices(prev => {
+              const exists = prev.some(d => d.id === device.id);
+              if (exists) return prev;
+              
+              return [...prev, {
+                id: device.id,
+                name: device.name,
+                isConnected: device.isConnected || false,
+                rssi: device.rssi,
+              }];
             });
           }
         });

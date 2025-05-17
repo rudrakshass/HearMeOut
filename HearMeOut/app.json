@@ -1,64 +1,42 @@
 {
   "expo": {
-    "name": "AudioFocus",
-    "slug": "audiofocus",
+    "name": "HearMeOut",
+    "slug": "HearMeOut",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "icon": "./assets/images/icon.png",
+    "scheme": "hearmeout",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.yourcompany.audiofocus",
-      "infoPlist": {
-        "NSBluetoothAlwaysUsageDescription": "This app uses Bluetooth to connect to headphones for audio processing.",
-        "NSBluetoothPeripheralUsageDescription": "This app uses Bluetooth to connect to headphones for audio processing.",
-        "NSMicrophoneUsageDescription": "This app uses the microphone to capture audio for processing."
-      }
+      "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.yourcompany.audiofocus",
-      "permissions": [
-        "android.permission.BLUETOOTH",
-        "android.permission.BLUETOOTH_ADMIN",
-        "android.permission.BLUETOOTH_CONNECT",
-        "android.permission.BLUETOOTH_SCAN",
-        "android.permission.RECORD_AUDIO",
-        "android.permission.ACCESS_FINE_LOCATION"
-      ]
+      "edgeToEdgeEnabled": true
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      "expo-router",
       [
-        "expo-av",
+        "expo-splash-screen",
         {
-          "microphonePermission": "Allow AudioFocus to access your microphone."
-        }
-      ],
-      [
-        "expo-updates",
-        {
-          "username": "yourexpoaccountusername"
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
         }
       ]
     ],
-    "extra": {
-      "eas": {
-        "projectId": "your-project-id"
-      }
+    "experiments": {
+      "typedRoutes": true
     }
   }
 }
