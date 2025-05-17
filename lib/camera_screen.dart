@@ -7,8 +7,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_tts/flutter_tts.dart';
 import 'tflite_service.dart';
+import 'text_to_speech_service.dart';
+import 'detection_labels.dart';
 
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
@@ -29,8 +30,8 @@ class _CameraScreenState extends State<CameraScreen> {
   // Object detector with classification
   late ObjectDetector _objectDetector;
   
-  // Text-to-speech for accessibility
-  final FlutterTts _flutterTts = FlutterTts();
+  // Text-to-speech service for accessibility
+  final TextToSpeechService _tts = TextToSpeechService();
   
   // Store detection results
   List<DetectedObject>? _detectedObjects;
@@ -43,7 +44,7 @@ class _CameraScreenState extends State<CameraScreen> {
     super.initState();
     _requestPermissions();
     _initDetector();
-    _initTts();
+    _initializeTTS();
     _loadTFLiteModel();
   }
   
@@ -141,25 +142,13 @@ class _CameraScreenState extends State<CameraScreen> {
     _textRecognizer.close();
     _objectDetector.close();
     TFLiteService.dispose();
-    _flutterTts.stop();
+    _tts.dispose();
     super.dispose();
   }
   
-  // Initialize text-to-speech with optimal settings for accessibility
-  Future<void> _initTts() async {
-    // Set language to English
-    await _flutterTts.setLanguage("en-US");
-    
-    // Optimize speech parameters for clarity
-    await _flutterTts.setSpeechRate(0.5);  // Slower rate for better comprehension
-    await _flutterTts.setPitch(1.0);       // Natural pitch
-    await _flutterTts.setVolume(1.0);      // Maximum volume
-    
-    // Set enhanced quality where available
-    await _flutterTts.setQueueMode(1);     // Add to queue instead of interrupting
-    
-    // Log TTS initialization
-    debugPrint('Text-to-speech initialized');
+  // Initialize text-to-speech service
+  Future<void> _initializeTTS() async {
+    await _tts.initialize();
   }
 
   // Function to enhance image before processing
@@ -207,11 +196,17 @@ class _CameraScreenState extends State<CameraScreen> {
         return;
       }
       
-      // Use the formatted detection summary directly from our service
+      // Store formatted detection summary for the UI
       if (result.containsKey('summary')) {
         _tfliteResults = result['summary'] as String;
       } else {
         _tfliteResults = 'No objects detected';
+      }
+      
+      // Extract object labels for speech
+      if (result.containsKey('detections')) {
+        final List<TFDetectedObject> detections = result['detections'] as List<TFDetectedObject>;
+        await _speakDetectedObjects(detections);
       }
       
       // Log the detection results for debugging
@@ -220,6 +215,15 @@ class _CameraScreenState extends State<CameraScreen> {
       debugPrint('Error running TFLite detection: $e');
       _tfliteResults = 'Error in object detection analysis';
     }
+  }
+  
+  // Speak detected objects using enhanced TTS service
+  Future<void> _speakDetectedObjects(List<TFDetectedObject> detections) async {
+    // Extract just the labels from detections
+    final labels = detections.map((d) => d.label).toList();
+    
+    // Speak the detected objects
+    await _tts.speakDetectedObjects(labels);
   }
   
   // Detect objects in an image
@@ -396,11 +400,8 @@ class _CameraScreenState extends State<CameraScreen> {
 
   // Provide accessibility feedback
   Future<void> _provideAccessibilityFeedback(String message) async {
-    // Vibration feedback - short pulse
-    HapticFeedback.mediumImpact();
-    
-    // Auditory feedback using TTS
-    await _flutterTts.speak(message);
+    debugPrint('TTS: $message');
+    await _tts.speak(message);
   }
 
   // Function to capture an image and process it with OCR, object detection, and TTS
