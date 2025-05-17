@@ -6,6 +6,7 @@ import 'package:path/path.dart' as path;
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
@@ -22,11 +23,15 @@ class _CameraScreenState extends State<CameraScreen> {
   
   // Use script-specific text recognizer for better accuracy
   final TextRecognizer _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
+  
+  // Text-to-speech for accessibility
+  final FlutterTts _flutterTts = FlutterTts();
 
   @override
   void initState() {
     super.initState();
     _requestPermissions();
+    _initTts();
   }
   
   // Request required permissions
@@ -91,7 +96,16 @@ class _CameraScreenState extends State<CameraScreen> {
     // Dispose of the controller when the widget is disposed
     _controller?.dispose();
     _textRecognizer.close();
+    _flutterTts.stop();
     super.dispose();
+  }
+  
+  // Initialize TTS settings
+  Future<void> _initTts() async {
+    await _flutterTts.setLanguage("en-US");
+    await _flutterTts.setSpeechRate(0.5); // Slightly slower rate for better comprehension
+    await _flutterTts.setVolume(1.0);
+    await _flutterTts.setPitch(1.0);
   }
 
   // Function to enhance image before processing
@@ -206,11 +220,23 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
+  // Provide accessibility feedback
+  Future<void> _provideAccessibilityFeedback(String message) async {
+    // Vibration feedback - short pulse
+    HapticFeedback.mediumImpact();
+    
+    // Auditory feedback using TTS
+    await _flutterTts.speak(message);
+  }
+
   // Function to capture an image and process it
   Future<void> _captureImage() async {
     if (!_isInitialized || _controller == null || !_controller!.value.isInitialized || _isProcessing) {
       return;
     }
+    
+    // Provide accessibility feedback that we're taking a photo
+    _provideAccessibilityFeedback("Taking photo");
 
     setState(() {
       _isProcessing = true; // Set processing flag to prevent multiple captures
@@ -259,6 +285,9 @@ class _CameraScreenState extends State<CameraScreen> {
             duration: Duration(seconds: 2),
           ),
         );
+        
+        // Provide accessibility feedback
+        _provideAccessibilityFeedback("Processing image for text recognition");
       }
       
       final String recognizedText = await _processImageForText(filePath);
@@ -267,6 +296,14 @@ class _CameraScreenState extends State<CameraScreen> {
       // Show the recognized text in a dialog
       if (mounted) {
         _showRecognizedTextDialog(recognizedText);
+        
+        // Provide accessibility feedback with the recognized text
+        // Use a shortened version for TTS if text is too long
+        String ttsText = recognizedText;
+        if (recognizedText.length > 200) {
+          ttsText = "${recognizedText.substring(0, 197)}... and more";
+        }
+        _provideAccessibilityFeedback("Text found: $ttsText");
       }
       
       // Reset focus mode back to auto for preview
@@ -362,17 +399,23 @@ class _CameraScreenState extends State<CameraScreen> {
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          // Primary capture button
-          FloatingActionButton(
-            onPressed: _isProcessing ? null : _captureImage,
-            backgroundColor: _isProcessing ? Colors.grey : Colors.white,
-            child: _isProcessing 
-              ? const SizedBox(
-                  width: 24, 
-                  height: 24, 
-                  child: CircularProgressIndicator(strokeWidth: 2.0, color: Colors.black)
-                )
-              : const Icon(Icons.camera_alt, color: Colors.black),
+          // Primary capture button with accessibility support
+          Semantics(
+            label: 'Camera capture button',
+            hint: 'Double tap to take a photo and recognize text',
+            button: true,
+            enabled: !_isProcessing,
+            child: FloatingActionButton(
+              onPressed: _isProcessing ? null : _captureImage,
+              backgroundColor: _isProcessing ? Colors.grey : Colors.white,
+              child: _isProcessing 
+                ? const SizedBox(
+                    width: 24, 
+                    height: 24, 
+                    child: CircularProgressIndicator(strokeWidth: 2.0, color: Colors.black)
+                  )
+                : const Icon(Icons.camera_alt, color: Colors.black),
+            ),
           ),
         ],
       ),
