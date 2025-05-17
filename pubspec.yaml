@@ -34,6 +34,21 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
+  
+  # Camera plugin for accessing device camera
+  camera: ^0.10.5+9
+  
+  # Text-to-speech functionality
+  flutter_tts: ^3.8.5
+  
+  # ML Kit for text recognition
+  google_mlkit_text_recognition: ^0.11.0
+  
+  # ML Kit for object detection
+  google_mlkit_object_detection: ^0.11.0
+  
+  # Path provider for file management
+  path_provider: ^2.1.2
 
 dev_dependencies:
   flutter_test:
