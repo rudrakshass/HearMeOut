@@ -9,14 +9,22 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "HearMeOut needs access to your microphone to enhance audio in your surroundings"
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "permissions": [
+        "RECORD_AUDIO",
+        "RECORD_AUDIO"
+      ],
+      "edgeToEdgeEnabled": true,
+      "package": "com.anonymous.HearMeOut"
     },
     "web": {
       "bundler": "metro",
