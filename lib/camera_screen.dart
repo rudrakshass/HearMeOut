@@ -499,29 +499,160 @@ class _CameraScreenState extends State<CameraScreen> {
       // Create a summary of detected objects for TTS
       String objectsSummary = '';
       if (detectedObjects.isNotEmpty) {
-        final Map<String, double> bestLabels = {};
+        // Collect all object labels with reasonable confidence
+        final Map<String, int> labelCounts = {};
+        final Map<String, List<Rect>> labelPositions = {};
         
-        // Get the best confidence label for each object
+        // Process each detected object
         for (final object in detectedObjects) {
+          // Find the best label for this object (highest confidence)
+          String? bestLabel;
+          double bestConfidence = 0.0;
+          
           for (final label in object.labels) {
-            // Store the highest confidence for each label
-            if (!bestLabels.containsKey(label.text) || 
-                label.confidence > bestLabels[label.text]!) {
-              bestLabels[label.text] = label.confidence;
+            if (label.confidence > bestConfidence && label.confidence > 0.4) {
+              bestLabel = label.text;
+              bestConfidence = label.confidence;
             }
+          }
+          
+          if (bestLabel != null) {
+            // Count occurrences of each label
+            labelCounts[bestLabel] = (labelCounts[bestLabel] ?? 0) + 1;
+            
+            // Store position information for spatial description
+            if (!labelPositions.containsKey(bestLabel)) {
+              labelPositions[bestLabel] = [];
+            }
+            labelPositions[bestLabel]!.add(object.boundingBox);
           }
         }
         
-        // Filter to only include reasonable confidence
-        final List<String> filteredLabels = [];
-        bestLabels.forEach((label, confidence) {
-          if (confidence > 0.6) {
-            filteredLabels.add(label);
+        // Create a detailed description with counts and positions
+        if (labelCounts.isNotEmpty) {
+          // Count total number of objects detected
+          int totalObjectCount = 0;
+          labelCounts.values.forEach((count) => totalObjectCount += count);
+          
+          // Start with total count of objects
+          final StringBuffer summaryBuffer = StringBuffer();
+          summaryBuffer.write("I detected $totalObjectCount ${totalObjectCount == 1 ? 'object' : 'objects'}: ");
+          
+          // Prepare detailed descriptions for each object type
+          final List<String> classDescriptions = [];
+          final Size screenSize = MediaQuery.of(context).size;
+          
+          labelCounts.forEach((label, count) {
+            // Start the description with the count and label
+            final StringBuffer classDescription = StringBuffer();
+            classDescription.write(count > 1 ? "$count ${label}s" : "a $label");
+            
+            // For multiple objects of the same class, describe each one's position
+            if (count > 1 && labelPositions[label]!.isNotEmpty) {
+              classDescription.write(": ");
+              final List<String> individualPositions = [];
+              
+              // Describe each instance with its position
+              for (int i = 0; i < labelPositions[label]!.length; i++) {
+                final Rect position = labelPositions[label]![i];
+                final double centerX = position.left + position.width / 2;
+                final double centerY = position.top + position.height / 2;
+                
+                // Determine position in frame (simple left/right/center, top/bottom/middle)
+                String horizontalPosition = "";
+                String verticalPosition = "";
+                
+                // Horizontal position
+                if (centerX < screenSize.width / 3) {
+                  horizontalPosition = "on the left";
+                } else if (centerX > 2 * screenSize.width / 3) {
+                  horizontalPosition = "on the right";
+                } else {
+                  horizontalPosition = "in the center";
+                }
+                
+                // Vertical position
+                if (centerY < screenSize.height / 3) {
+                  verticalPosition = "at the top";
+                } else if (centerY > 2 * screenSize.height / 3) {
+                  verticalPosition = "at the bottom";
+                } else {
+                  verticalPosition = "in the middle";
+                }
+                
+                // Add position for this specific object
+                String ordinal = "";
+                if (count > 2) {
+                  // Use ordinals for 3+ objects
+                  switch (i) {
+                    case 0: ordinal = "first "; break;
+                    case 1: ordinal = "second "; break;
+                    case 2: ordinal = "third "; break;
+                    default: ordinal = "${i+1}th ";
+                  }
+                } else if (count == 2) {
+                  // For exactly 2 objects, use simpler terms
+                  ordinal = i == 0 ? "one " : "another ";
+                }
+                
+                individualPositions.add("$ordinal$horizontalPosition $verticalPosition");
+              }
+              
+              // Join all positions with commas and 'and'
+              if (individualPositions.length == 1) {
+                classDescription.write(individualPositions[0]);
+              } else if (individualPositions.length == 2) {
+                classDescription.write("${individualPositions[0]} and ${individualPositions[1]}");
+              } else {
+                final String lastPosition = individualPositions.removeLast();
+                classDescription.write("${individualPositions.join(', ')}, and $lastPosition");
+              }
+            } 
+            // For a single object, just add its position
+            else if (labelPositions[label]!.isNotEmpty) {
+              final Rect position = labelPositions[label]!.first;
+              final double centerX = position.left + position.width / 2;
+              final double centerY = position.top + position.height / 2;
+              
+              // Determine position in frame
+              String horizontalPosition = "";
+              String verticalPosition = "";
+              
+              // Horizontal position
+              if (centerX < screenSize.width / 3) {
+                horizontalPosition = "on the left";
+              } else if (centerX > 2 * screenSize.width / 3) {
+                horizontalPosition = "on the right";
+              } else {
+                horizontalPosition = "in the center";
+              }
+              
+              // Vertical position
+              if (centerY < screenSize.height / 3) {
+                verticalPosition = "at the top";
+              } else if (centerY > 2 * screenSize.height / 3) {
+                verticalPosition = "at the bottom";
+              } else {
+                verticalPosition = "in the middle";
+              }
+              
+              classDescription.write(" $horizontalPosition $verticalPosition");
+            }
+            
+            classDescriptions.add(classDescription.toString());
+          });
+          
+          // Format the final description
+          if (classDescriptions.length == 1) {
+            summaryBuffer.write(classDescriptions[0]);
+          } else if (classDescriptions.length == 2) {
+            summaryBuffer.write("${classDescriptions[0]} and ${classDescriptions[1]}");
+          } else {
+            final String lastClassDescription = classDescriptions.removeLast();
+            summaryBuffer.write("${classDescriptions.join(', ')}, and $lastClassDescription");
           }
-        });
-        
-        if (filteredLabels.isNotEmpty) {
-          objectsSummary = "Objects detected: ${filteredLabels.join(', ')}"; 
+          
+          objectsSummary = summaryBuffer.toString();
         }
       }
       
@@ -543,19 +674,16 @@ class _CameraScreenState extends State<CameraScreen> {
       // Create combined feedback for TTS
       String feedbackText = '';
       
-      // Start with objects as they're often more important for context
+      // Always start with objects (even if none detected)
       if (objectsSummary.isNotEmpty) {
         feedbackText = objectsSummary;
+      } else {
+        feedbackText = "No objects detected";
       }
       
       // Then add text if available
       if (ttsText.isNotEmpty) {
-        if (feedbackText.isNotEmpty) {
-          feedbackText += ". I also found text: ";
-        } else {
-          feedbackText = "Text found: ";
-        }
-        feedbackText += ttsText;
+        feedbackText += ". I also found text: " + ttsText;
       }
       
       // Add TFLite results if available
