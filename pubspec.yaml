@@ -54,6 +54,11 @@ dependencies:
   # Path provider and permission handler
   path_provider: ^2.1.2
   permission_handler: ^12.0.0+1
+  
+  # Using Flutter's built-in haptic feedback
+  
+  # Audio player for sound feedback
+  audioplayers: ^5.2.1
 
 dev_dependencies:
   flutter_test:
@@ -80,6 +85,7 @@ flutter:
   # To add assets to your application, add an assets section, like this:
   assets:
     - assets/models/model.tflite
+    - assets/sounds/beep.mp3
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

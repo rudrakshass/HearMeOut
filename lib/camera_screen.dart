@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'tflite_service.dart';
 import 'text_to_speech_service.dart';
 import 'detection_labels.dart';
+import 'feedback_service.dart';
 
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
@@ -33,6 +34,9 @@ class _CameraScreenState extends State<CameraScreen> {
   // Text-to-speech service for accessibility
   final TextToSpeechService _tts = TextToSpeechService();
   
+  // Feedback service for vibration and sound
+  final FeedbackService _feedbackService = FeedbackService();
+  
   // Store detection results
   List<DetectedObject>? _detectedObjects;
   
@@ -46,6 +50,12 @@ class _CameraScreenState extends State<CameraScreen> {
     _initDetector();
     _initializeTTS();
     _loadTFLiteModel();
+    _initializeFeedbackService();
+  }
+  
+  // Initialize feedback service
+  Future<void> _initializeFeedbackService() async {
+    await _feedbackService.initialize();
   }
   
   // Load the TFLite model from assets
@@ -143,6 +153,7 @@ class _CameraScreenState extends State<CameraScreen> {
     _objectDetector.close();
     TFLiteService.dispose();
     _tts.dispose();
+    _feedbackService.dispose();
     super.dispose();
   }
   
@@ -471,6 +482,19 @@ class _CameraScreenState extends State<CameraScreen> {
       
       debugPrint('Recognized text: $recognizedText');
       debugPrint('Detected ${detectedObjects.length} objects');
+      
+      // Provide haptic feedback if objects are detected
+      if (detectedObjects.isNotEmpty) {
+        _feedbackService.vibrate();
+        
+        // Check if any object is centered in the frame and play beep sound if so
+        for (final object in detectedObjects) {
+          if (_feedbackService.isObjectCentered(object.boundingBox, MediaQuery.of(context).size)) {
+            _feedbackService.playBeep();
+            break;
+          }
+        }
+      }
       
       // Create a summary of detected objects for TTS
       String objectsSummary = '';
