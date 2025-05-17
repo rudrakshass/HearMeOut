@@ -197,8 +197,8 @@ class _CameraScreenState extends State<CameraScreen> {
     }
     
     try {
-      // Run object detection using our service
-      final result = await TFLiteService.detectObjectsInImage(cameraImage);
+      // Run object detection using our enhanced service with COCO labels
+      final result = await TFLiteService.detectObjectsInImage(cameraImage, threshold: 0.5);
       
       // Check for errors
       if (result.containsKey('error')) {
@@ -207,35 +207,14 @@ class _CameraScreenState extends State<CameraScreen> {
         return;
       }
       
-      // Process detection results
-      final List<Map<String, dynamic>> detections = result['detections'] as List<Map<String, dynamic>>;
-      
-      if (detections.isEmpty) {
-        _tfliteResults = 'No objects detected';
+      // Use the formatted detection summary directly from our service
+      if (result.containsKey('summary')) {
+        _tfliteResults = result['summary'] as String;
       } else {
-        // Format detection results for TTS
-        final buffer = StringBuffer();
-        buffer.write('Detected ${detections.length} object${detections.length > 1 ? 's' : ''}: ');
-        
-        // Since we don't have class labels yet, we'll just report the class indices
-        // In a real app, you would map these indices to meaningful labels
-        for (int i = 0; i < detections.length; i++) {
-          final detection = detections[i];
-          final classIndex = detection['class'];
-          final score = (detection['score'] as double).toStringAsFixed(2);
-          
-          // Replace this with your actual class labels
-          final className = 'Object $classIndex';
-          
-          buffer.write('$className ($score)');
-          if (i < detections.length - 1) {
-            buffer.write(', ');
-          }
-        }
-        
-        _tfliteResults = buffer.toString();
+        _tfliteResults = 'No objects detected';
       }
       
+      // Log the detection results for debugging
       debugPrint('TFLite detection results: $result');
     } catch (e) {
       debugPrint('Error running TFLite detection: $e');

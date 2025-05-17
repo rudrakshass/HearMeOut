@@ -3,6 +3,7 @@ import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:camera/camera.dart';
 import 'dart:typed_data';
 import 'image_converter.dart';
+import 'detection_labels.dart';
 
 class TFLiteService {
   static Interpreter? _interpreter;
@@ -253,7 +254,7 @@ class TFLiteService {
   
   /// Detect objects in a camera image
   /// This is a convenience method that combines image preprocessing and inference
-  static Future<Map<String, dynamic>> detectObjectsInImage(CameraImage cameraImage) async {
+  static Future<Map<String, dynamic>> detectObjectsInImage(CameraImage cameraImage, {double threshold = 0.5}) async {
     if (!_modelLoaded || _interpreter == null) {
       return {'error': 'Model not loaded'};
     }
@@ -268,10 +269,26 @@ class TFLiteService {
       );
       
       // Run object detection on the input tensor
-      return runObjectDetection(
+      final rawDetections = await runObjectDetection(
         inputTensor: inputTensor,
-        threshold: 0.5,  // Adjust threshold as needed
+        threshold: threshold,
       );
+      
+      // Parse raw detections into structured objects with COCO labels
+      final parsedDetections = DetectionLabels.parseDetections(
+        rawDetections,
+        confidenceThreshold: threshold,
+      );
+      
+      // Convert to a readable string for TTS
+      final detectionSummary = DetectionLabels.detectionsToString(parsedDetections);
+      
+      // Return both raw and processed results
+      return {
+        'raw': rawDetections,
+        'detections': parsedDetections,
+        'summary': detectionSummary,
+      };
     } catch (e) {
       debugPrint('Error detecting objects in image: $e');
       return {'error': e.toString()};
