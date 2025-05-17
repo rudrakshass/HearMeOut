@@ -59,6 +59,140 @@ class TFLiteService {
     _modelLoaded = false;
   }
   
+  /// Process a preprocessed image tensor through a TFLite object detection model
+  /// Returns a map containing detected objects with their bounding boxes, classes, and scores
+  static Future<Map<String, dynamic>> runObjectDetection({
+    required List<double> inputTensor,
+    int numResults = 10,
+    double threshold = 0.5,
+  }) async {
+    if (!_modelLoaded || _interpreter == null) {
+      return {'error': 'Model not loaded'};
+    }
+    
+    try {
+      // Create output tensors based on standard object detection model format
+      // Typical SSD/YOLO models produce outputs in this format:
+      // [1, numBoxes, 4] for the locations (bounding boxes) 
+      // [1, numBoxes] for the classes
+      // [1, numBoxes] for the scores
+      
+      final outputLocations = List<List<List<double>>>.filled(
+        1, 
+        List<List<double>>.filled(
+          numResults, 
+          List<double>.filled(4, 0.0),
+        ),
+      );
+      
+      final outputClasses = List<List<double>>.filled(
+        1, 
+        List<double>.filled(numResults, 0.0),
+      );
+      
+      final outputScores = List<List<double>>.filled(
+        1, 
+        List<double>.filled(numResults, 0.0),
+      );
+      
+      // Prepare input tensor for the model
+      final reshapedInput = _reshapeInputTensor(inputTensor);
+      
+      // Run inference
+      final outputs = <int, Object>{};
+      
+      // Configure outputs - this may vary based on your specific model
+      // These are the standard output tensors for TFLite object detection models
+      outputs[0] = outputLocations;    // Bounding box coordinates [top, left, bottom, right]
+      outputs[1] = outputClasses;      // Class indices 
+      outputs[2] = outputScores;       // Confidence scores
+      
+      // Run the model
+      _interpreter!.runForMultipleInputs([reshapedInput], outputs);
+      
+      // Process results - filter based on confidence threshold
+      final List<Map<String, dynamic>> detections = [];
+      
+      for (int i = 0; i < numResults; i++) {
+        final score = outputScores[0][i];
+        
+        // Only include detections above the threshold
+        if (score >= threshold) {
+          final bbox = outputLocations[0][i];
+          final classIndex = outputClasses[0][i].toInt();
+          
+          detections.add({
+            'bbox': {
+              'top': bbox[0],
+              'left': bbox[1],
+              'bottom': bbox[2],
+              'right': bbox[3],
+            },
+            'class': classIndex,
+            'score': score,
+          });
+        }
+      }
+      
+      return {
+        'detections': detections,
+        'raw': {
+          'locations': outputLocations,
+          'classes': outputClasses,
+          'scores': outputScores,
+        }
+      };
+    } catch (e) {
+      debugPrint('Error running object detection: $e');
+      return {'error': e.toString()};
+    }
+  }
+  
+  /// Helper method to reshape a List<double> to match tensor dimensions
+  static dynamic _reshapeInputTensor(List<double> flatTensor) {
+    if (_inputShape.length == 4) {  // For 4D tensor [1, height, width, channels]
+      final batch = _inputShape[0];
+      final height = _inputShape[1];
+      final width = _inputShape[2];
+      final channels = _inputShape[3];
+      
+      final result = List.generate(
+        batch,
+        (_) => List.generate(
+          height,
+          (y) => List.generate(
+            width,
+            (x) => List.generate(
+              channels,
+              (c) => flatTensor[((y * width + x) * channels) + c],
+            ),
+          ),
+        ),
+      );
+      
+      return result;
+    } else if (_inputShape.length == 3) {  // For 3D tensor [height, width, channels]
+      final height = _inputShape[0];
+      final width = _inputShape[1];
+      final channels = _inputShape[2];
+      
+      final result = List.generate(
+        height,
+        (y) => List.generate(
+          width,
+          (x) => List.generate(
+            channels,
+            (c) => flatTensor[((y * width + x) * channels) + c],
+          ),
+        ),
+      );
+      
+      return result;
+    } else {
+      throw Exception('Unsupported shape for reshaping: $_inputShape');
+    }
+  }
+  
   /// Run inference on a camera image
   static Future<List<dynamic>> runInferenceOnCameraImage(CameraImage cameraImage) async {
     if (!_modelLoaded || _interpreter == null) {
@@ -115,5 +249,32 @@ class TFLiteService {
       targetWidth: inputWidth,
       targetHeight: inputHeight,
     );
+  }
+  
+  /// Detect objects in a camera image
+  /// This is a convenience method that combines image preprocessing and inference
+  static Future<Map<String, dynamic>> detectObjectsInImage(CameraImage cameraImage) async {
+    if (!_modelLoaded || _interpreter == null) {
+      return {'error': 'Model not loaded'};
+    }
+    
+    try {
+      // Convert image to input tensor
+      final inputTensor = ImageConverter.imageToTensorInput(
+        cameraImage,
+        _inputShape[1], // Width
+        _inputShape[2], // Height
+        normalize: true,
+      );
+      
+      // Run object detection on the input tensor
+      return runObjectDetection(
+        inputTensor: inputTensor,
+        threshold: 0.5,  // Adjust threshold as needed
+      );
+    } catch (e) {
+      debugPrint('Error detecting objects in image: $e');
+      return {'error': e.toString()};
+    }
   }
 }

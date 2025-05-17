@@ -197,21 +197,49 @@ class _CameraScreenState extends State<CameraScreen> {
     }
     
     try {
-      // Run inference using our service
-      final inferenceResults = await TFLiteService.runInferenceOnCameraImage(cameraImage);
+      // Run object detection using our service
+      final result = await TFLiteService.detectObjectsInImage(cameraImage);
       
-      // Process the raw inference results based on your model's output format
-      // This is just a placeholder - you would need to interpret based on your model
-      _tfliteResults = 'Analysis complete';
+      // Check for errors
+      if (result.containsKey('error')) {
+        debugPrint('Error in TFLite detection: ${result['error']}');
+        _tfliteResults = 'Error in object detection';
+        return;
+      }
       
-      // For example, if your model is a classifier, you might extract the top class:
-      // final topClassIndex = inferenceResults.indexOf(inferenceResults.reduce(max));
-      // _tfliteResults = 'Detected: ${_classLabels[topClassIndex]}';
+      // Process detection results
+      final List<Map<String, dynamic>> detections = result['detections'] as List<Map<String, dynamic>>;
       
-      debugPrint('TFLite inference results: $inferenceResults');
+      if (detections.isEmpty) {
+        _tfliteResults = 'No objects detected';
+      } else {
+        // Format detection results for TTS
+        final buffer = StringBuffer();
+        buffer.write('Detected ${detections.length} object${detections.length > 1 ? 's' : ''}: ');
+        
+        // Since we don't have class labels yet, we'll just report the class indices
+        // In a real app, you would map these indices to meaningful labels
+        for (int i = 0; i < detections.length; i++) {
+          final detection = detections[i];
+          final classIndex = detection['class'];
+          final score = (detection['score'] as double).toStringAsFixed(2);
+          
+          // Replace this with your actual class labels
+          final className = 'Object $classIndex';
+          
+          buffer.write('$className ($score)');
+          if (i < detections.length - 1) {
+            buffer.write(', ');
+          }
+        }
+        
+        _tfliteResults = buffer.toString();
+      }
+      
+      debugPrint('TFLite detection results: $result');
     } catch (e) {
-      debugPrint('Error running TFLite inference: $e');
-      _tfliteResults = 'Error in analysis';
+      debugPrint('Error running TFLite detection: $e');
+      _tfliteResults = 'Error in object detection analysis';
     }
   }
   
