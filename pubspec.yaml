@@ -41,13 +41,11 @@ dependencies:
   # Text-to-speech functionality
   flutter_tts: ^3.8.5
   
-  # ML Kit for text recognition
+  # Google ML Kit dependencies
   google_mlkit_text_recognition: ^0.11.0
-  
-  # ML Kit for object detection
   google_mlkit_object_detection: ^0.11.0
   
-  # Path provider for file management
+  # Path provider and permission handler
   path_provider: ^2.1.2
   permission_handler: ^12.0.0+1
 

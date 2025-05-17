@@ -4,6 +4,7 @@ import 'package:camera/camera.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:google_mlkit_object_detection/google_mlkit_object_detection.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -24,15 +25,37 @@ class _CameraScreenState extends State<CameraScreen> {
   // Use script-specific text recognizer for better accuracy
   final TextRecognizer _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
   
+  // Object detector with classification
+  late ObjectDetector _objectDetector;
+  
   // Text-to-speech for accessibility
   final FlutterTts _flutterTts = FlutterTts();
+  
+  // Results from last detection
+  List<DetectedObject>? _detectedObjects;
 
   @override
   void initState() {
     super.initState();
+    _initDetector();
     _requestPermissions();
     _initTts();
   }
+  
+  // Initialize the object detector
+  Future<void> _initDetector() async {
+    // Configure detection options
+    final options = ObjectDetectorOptions(
+      mode: DetectionMode.single, // Process a single image
+      classifyObjects: true, // Enable classification
+      multipleObjects: true, // Detect multiple objects in the image
+    );
+    
+    _objectDetector = ObjectDetector(options: options);
+  }
+  
+  // We're using the built-in model for object detection
+  // ML Kit provides pre-trained models that work well for common scenarios
   
   // Request required permissions
   Future<void> _requestPermissions() async {
@@ -96,6 +119,7 @@ class _CameraScreenState extends State<CameraScreen> {
     // Dispose of the controller when the widget is disposed
     _controller?.dispose();
     _textRecognizer.close();
+    _objectDetector.close();
     _flutterTts.stop();
     super.dispose();
   }
@@ -120,6 +144,31 @@ class _CameraScreenState extends State<CameraScreen> {
     
     // For now, we just return the original file
     return File(imagePath);
+  }
+
+  // Detect objects in an image
+  Future<List<DetectedObject>> _detectObjects(String imagePath) async {
+    try {
+      // Create input image
+      final InputImage inputImage = InputImage.fromFilePath(imagePath);
+      
+      // Process image with object detector
+      final List<DetectedObject> objects = await _objectDetector.processImage(inputImage);
+      
+      // Log object detection results
+      debugPrint('Detected ${objects.length} objects:');
+      for (final DetectedObject object in objects) {
+        debugPrint('Object at ${object.boundingBox}:');
+        for (final Label label in object.labels) {
+          debugPrint('  Label: ${label.text}, confidence: ${label.confidence}');
+        }
+      }
+      
+      return objects;
+    } catch (e) {
+      debugPrint('Error during object detection: $e');
+      return [];
+    }
   }
 
   // Function to recognize text in an image with improved accuracy
@@ -165,14 +214,39 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
   
-  // Function to show recognized text in a dialog with improved UI
+  // Function to show recognized text and objects in a dialog with improved UI
   void _showRecognizedTextDialog(String text) {
     if (!mounted) return;
+    
+    // Prepare object detection results if available
+    String objectsText = '';
+    if (_detectedObjects != null && _detectedObjects!.isNotEmpty) {
+      // Map to count occurrences of each label
+      final Map<String, int> labelCounts = {};
+      
+      // Process all detected objects
+      for (final DetectedObject object in _detectedObjects!) {
+        for (final Label label in object.labels) {
+          final String labelText = '${label.text} (${(label.confidence * 100).toStringAsFixed(1)}%)';
+          labelCounts[labelText] = (labelCounts[labelText] ?? 0) + 1;
+        }
+      }
+      
+      // Build a string of all labels
+      final List<String> objectLabels = [];
+      labelCounts.forEach((label, count) {
+        objectLabels.add(count > 1 ? '$label x$count' : label);
+      });
+      
+      if (objectLabels.isNotEmpty) {
+        objectsText = 'Objects detected:\n• ${objectLabels.join('\n• ')}';
+      }
+    }
     
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Recognized Text'),
+        title: const Text('Analysis Results'),
         content: Container(
           width: double.maxFinite,
           constraints: BoxConstraints(
@@ -183,10 +257,26 @@ class _CameraScreenState extends State<CameraScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                SelectableText(
-                  text,
-                  style: const TextStyle(fontSize: 16),
-                ),
+                if (text.isNotEmpty) ...[  
+                  const Text('Recognized Text:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  SelectableText(
+                    text,
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                ],
+                if (text.isNotEmpty && objectsText.isNotEmpty)
+                  const Divider(height: 24),
+                if (objectsText.isNotEmpty) ...[  
+                  const Text('Objects:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  SelectableText(
+                    objectsText,
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                ],
+                if (text.isEmpty && objectsText.isEmpty)
+                  const Text('No text or objects detected'),
               ],
             ),
           ),
@@ -194,8 +284,16 @@ class _CameraScreenState extends State<CameraScreen> {
         actions: [
           TextButton(
             onPressed: () {
-              // Copy text to clipboard
-              _copyToClipboard(text);
+              // Copy all results to clipboard
+              String clipboardText = '';
+              if (text.isNotEmpty) {
+                clipboardText += 'RECOGNIZED TEXT:\n$text';
+              }
+              if (objectsText.isNotEmpty) {
+                if (clipboardText.isNotEmpty) clipboardText += '\n\n';
+                clipboardText += objectsText;
+              }
+              _copyToClipboard(clipboardText);
             },
             child: const Text('Copy'),
           ),
@@ -274,36 +372,77 @@ class _CameraScreenState extends State<CameraScreen> {
       
       debugPrint('Image saved at: $filePath');
       
-      // Process the image for text recognition
-      debugPrint('Starting text recognition...');
+      // Process the image for text recognition and object detection
+      debugPrint('Starting image analysis...');
       
       // Show a processing indicator
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Processing image for text...'),
+            content: Text('Analyzing image...'),
             duration: Duration(seconds: 2),
           ),
         );
         
         // Provide accessibility feedback
-        _provideAccessibilityFeedback("Processing image for text recognition");
+        _provideAccessibilityFeedback("Analyzing image for text and objects");
       }
       
+      // Run text recognition and object detection in parallel
       final String recognizedText = await _processImageForText(filePath);
-      debugPrint('Recognized text: $recognizedText');
+      final List<DetectedObject> detectedObjects = await _detectObjects(filePath);
       
-      // Show the recognized text in a dialog
+      // Store the detected objects for UI display
+      _detectedObjects = detectedObjects;
+      
+      debugPrint('Recognized text: $recognizedText');
+      debugPrint('Detected ${detectedObjects.length} objects');
+      
+      // Create a summary of detected objects for speech
+      String objectsSummary = '';
+      if (detectedObjects.isNotEmpty) {
+        final Set<String> uniqueLabels = {};
+        for (final object in detectedObjects) {
+          for (final label in object.labels) {
+            // Only include labels with reasonable confidence
+            if (label.confidence > 0.5) {
+              uniqueLabels.add(label.text);
+            }
+          }
+        }
+        if (uniqueLabels.isNotEmpty) {
+          objectsSummary = "Objects detected: ${uniqueLabels.join(', ')}"; 
+        }
+      }
+      
+      // Show the results in a dialog
       if (mounted) {
         _showRecognizedTextDialog(recognizedText);
         
-        // Provide accessibility feedback with the recognized text
+        // Provide accessibility feedback with the recognized text and objects
         // Use a shortened version for TTS if text is too long
         String ttsText = recognizedText;
-        if (recognizedText.length > 200) {
-          ttsText = "${recognizedText.substring(0, 197)}... and more";
+        if (recognizedText.length > 100) {
+          ttsText = "${recognizedText.substring(0, 97)}... and more";
         }
-        _provideAccessibilityFeedback("Text found: $ttsText");
+        
+        // Combine text and object feedback
+        String feedbackText = '';
+        if (ttsText.isNotEmpty) {
+          feedbackText = "Text found: $ttsText";
+        }
+        if (objectsSummary.isNotEmpty) {
+          if (feedbackText.isNotEmpty) {
+            feedbackText += ". ";
+          }
+          feedbackText += objectsSummary;
+        }
+        
+        if (feedbackText.isEmpty) {
+          feedbackText = "No text or objects detected";
+        }
+        
+        _provideAccessibilityFeedback(feedbackText);
       }
       
       // Reset focus mode back to auto for preview
