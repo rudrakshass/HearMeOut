@@ -562,11 +562,11 @@ class _CameraScreenState extends State<CameraScreen> {
                 String horizontalPosition = "";
                 String verticalPosition = "";
                 
-                // Horizontal position
+                // Horizontal position - flip the calculation since camera view is mirrored
                 if (centerX < screenSize.width / 3) {
-                  horizontalPosition = "on the left";
+                  horizontalPosition = "on the right"; // Flipped from left to right
                 } else if (centerX > 2 * screenSize.width / 3) {
-                  horizontalPosition = "on the right";
+                  horizontalPosition = "on the left"; // Flipped from right to left
                 } else {
                   horizontalPosition = "in the center";
                 }
@@ -578,6 +578,24 @@ class _CameraScreenState extends State<CameraScreen> {
                   verticalPosition = "at the bottom";
                 } else {
                   verticalPosition = "in the middle";
+                }
+                
+                // Distance approximation based on object size relative to screen size
+                final double objectArea = position.width * position.height;
+                final double screenArea = screenSize.width * screenSize.height;
+                final double sizeRatio = objectArea / screenArea;
+                
+                String distanceApprox = "";
+                if (sizeRatio > 0.3) {
+                  distanceApprox = " very close";
+                } else if (sizeRatio > 0.1) {
+                  distanceApprox = " close";
+                } else if (sizeRatio > 0.05) {
+                  distanceApprox = " nearby";
+                } else if (sizeRatio > 0.01) {
+                  distanceApprox = " at medium distance";
+                } else {
+                  distanceApprox = " far away";
                 }
                 
                 // Add position for this specific object
@@ -595,7 +613,7 @@ class _CameraScreenState extends State<CameraScreen> {
                   ordinal = i == 0 ? "one " : "another ";
                 }
                 
-                individualPositions.add("$ordinal$horizontalPosition $verticalPosition");
+                individualPositions.add("$ordinal$horizontalPosition $verticalPosition$distanceApprox");
               }
               
               // Join all positions with commas and 'and'
@@ -618,11 +636,11 @@ class _CameraScreenState extends State<CameraScreen> {
               String horizontalPosition = "";
               String verticalPosition = "";
               
-              // Horizontal position
+              // Horizontal position - flip the calculation since camera view is mirrored
               if (centerX < screenSize.width / 3) {
-                horizontalPosition = "on the left";
+                horizontalPosition = "on the right"; // Flipped from left to right
               } else if (centerX > 2 * screenSize.width / 3) {
-                horizontalPosition = "on the right";
+                horizontalPosition = "on the left"; // Flipped from right to left
               } else {
                 horizontalPosition = "in the center";
               }
@@ -636,7 +654,25 @@ class _CameraScreenState extends State<CameraScreen> {
                 verticalPosition = "in the middle";
               }
               
-              classDescription.write(" $horizontalPosition $verticalPosition");
+              // Add distance approximation based on object size
+              final double objectArea = position.width * position.height;
+              final double screenArea = screenSize.width * screenSize.height;
+              final double sizeRatio = objectArea / screenArea;
+              
+              String distanceApprox = "";
+              if (sizeRatio > 0.3) {
+                distanceApprox = " very close";
+              } else if (sizeRatio > 0.1) {
+                distanceApprox = " close";
+              } else if (sizeRatio > 0.05) {
+                distanceApprox = " nearby";
+              } else if (sizeRatio > 0.01) {
+                distanceApprox = " at medium distance";
+              } else {
+                distanceApprox = " far away";
+              }
+              
+              classDescription.write(" $horizontalPosition $verticalPosition$distanceApprox");
             }
             
             classDescriptions.add(classDescription.toString());
@@ -681,8 +717,10 @@ class _CameraScreenState extends State<CameraScreen> {
         feedbackText = "No objects detected";
       }
       
-      // Then add text if available
-      if (ttsText.isNotEmpty) {
+      // Then add text if available, but only if it's meaningful (not just 'No text detected')
+      if (ttsText.isNotEmpty && 
+          !ttsText.contains("No meaningful text detected") && 
+          !ttsText.contains("No text detected")) {
         feedbackText += ". I also found text: " + ttsText;
       }
       
