@@ -204,7 +204,8 @@ class TFLiteService {
     final int inputWidth = _inputShape[1]; // Height x Width format
     final int inputHeight = _inputShape[2];
     // Check if model is quantized (uint8) or float (float32)
-    final bool isQuantized = _interpreter!.getInputTensor(0).type == TfLiteType.uint8;
+    // Using string representation to avoid enum compatibility issues
+    final bool isQuantized = _interpreter!.getInputTensor(0).type.toString().toLowerCase().contains('uint8');
     
     // Convert camera image to tensor input format
     final List<double> inputTensor = ImageConverter.imageToTensorInput(

@@ -607,6 +607,19 @@ class _CameraScreenState extends State<CameraScreen> {
     final deviceRatio = size.width / size.height;
 
     return Scaffold(
+      appBar: AppBar(
+        title: const Text('Vision App'),
+        backgroundColor: Colors.black87,
+        actions: [
+          // Help button
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            onPressed: () {
+              _showInstructions(context);
+            },
+          ),
+        ],
+      ),
       body: Stack(
         children: [
           // Camera preview that fills the screen with tap gesture
@@ -629,15 +642,16 @@ class _CameraScreenState extends State<CameraScreen> {
             top: 40,
             left: 0,
             right: 0,
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-              color: Colors.black54,
-              child: const Text(
-                'Tap anywhere on screen to capture and analyze',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  'Tap anywhere to analyze',
+                  style: TextStyle(color: Colors.white, fontSize: 16),
                 ),
               ),
             ),
@@ -647,22 +661,43 @@ class _CameraScreenState extends State<CameraScreen> {
           if (_isProcessing)
             Container(
               color: Colors.black54,
+              width: double.infinity,
+              height: double.infinity,
               child: const Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircularProgressIndicator(color: Colors.white),
-                    SizedBox(height: 16),
-                    Text(
-                      'Processing...',
-                      style: TextStyle(color: Colors.white, fontSize: 16),
-                    ),
-                  ],
-                ),
+                child: CircularProgressIndicator(color: Colors.white),
               ),
             ),
         ],
       ),
     );
   }
+
+// Show instructions dialog
+void _showInstructions(BuildContext context) {
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('How to Use'),
+      content: const Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('• Tap anywhere on the screen to capture and analyze an image'),
+          SizedBox(height: 8),
+          Text('• The app will detect objects using TensorFlow Lite'),
+          SizedBox(height: 8),
+          Text('• Results will be spoken aloud for accessibility'),
+          SizedBox(height: 8),
+          Text('• Wait for processing to complete before capturing again'),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Got it'),
+        ),
+      ],
+    ),
+  );
+}
 }
