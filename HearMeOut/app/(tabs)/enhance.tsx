@@ -28,6 +28,7 @@ export default function EnhanceAudioScreen() {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [filterStrength, setFilterStrength] = useState(5);
+  const [frequencyData, setFrequencyData] = useState<number[] | undefined>(undefined);
   
   // Animation refs
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -43,13 +44,17 @@ export default function EnhanceAudioScreen() {
       if (status === 'error') {
         setIsEnhancing(false);
       }
+    },
+    onAudioData: (data) => {
+      setFrequencyData(data);
     }
   });
   
   // Get visualization data
   const visualizationData = useAudioVisualization(
     isEnhancing && audioProcessor.status === 'listening', 
-    filterStrength
+    filterStrength,
+    frequencyData
   );
 
   // Load saved filter strength
@@ -232,6 +237,9 @@ export default function EnhanceAudioScreen() {
       
       audioProcessor.stopProcessing();
       
+      // Reset frequency data when stopping
+      setFrequencyData(undefined);
+      
       // Only provide success feedback if we actually had a recording to stop
       if (needsCleanup) {
         // Provide haptic feedback
@@ -375,7 +383,7 @@ export default function EnhanceAudioScreen() {
               : audioProcessor.error 
                 ? 'An error occurred. Please try again.'
                 : isEnhancing
-                  ? 'Audio enhancement is active. Background noises are being filtered.'
+                  ? 'Audio enhancement is active. Real-time audio is being visualized.'
                   : 'Toggle the switch to start enhancing audio from your surroundings'}
           </Text>
         </Card>
@@ -405,6 +413,13 @@ export default function EnhanceAudioScreen() {
               <Ionicons name="ear" size={24} color={colors.tint} />
               <Text style={[styles.featureText, { color: colors.text }]}>
                 Frequency Optimization
+              </Text>
+            </View>
+            
+            <View style={styles.featureItem}>
+              <Ionicons name="analytics" size={24} color={colors.tint} />
+              <Text style={[styles.featureText, { color: colors.text }]}>
+                Real-time Audio Visualization
               </Text>
             </View>
           </Card>

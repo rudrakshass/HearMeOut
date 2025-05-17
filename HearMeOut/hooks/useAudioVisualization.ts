@@ -20,11 +20,16 @@ export interface VisualizationData {
 }
 
 /**
- * Hook to create realistic audio visualization
+ * Hook to create audio visualization from real or simulated frequency data
  * @param isActive Whether audio is currently being processed
  * @param sensitivity How sensitive the visualization is (1-10)
+ * @param frequencyData Optional real frequency data array (0-1 normalized)
  */
-export const useAudioVisualization = (isActive: boolean, sensitivity: number = 5) => {
+export const useAudioVisualization = (
+  isActive: boolean, 
+  sensitivity: number = 5,
+  frequencyData?: number[]
+) => {
   // Store the current visualization data
   const [visualizationData, setVisualizationData] = useState<VisualizationData>({
     bars: Array(BAR_COUNT).fill(BASE_HEIGHT),
@@ -87,65 +92,101 @@ export const useAudioVisualization = (isActive: boolean, sensitivity: number = 5
       : visualizationData.peak * 0.95; // Peak decays slowly
   };
   
-  // Process frame in animation loop
+  // Process real frequency data when available
+  useEffect(() => {
+    if (frequencyData && isActive) {
+      // Use real frequency data if provided
+      // Scale the data based on sensitivity
+      const sensitivityFactor = sensitivity / 5; // Adjust scaling
+      
+      const scaledData = frequencyData.map(value => {
+        const scaledValue = value * sensitivityFactor;
+        // Ensure values are within our desired range
+        return Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, scaledValue));
+      });
+      
+      // Update target values
+      targetValues.current = scaledData;
+      
+      // Smooth transition to new values
+      currentValues.current = smoothValues(targetValues.current, currentValues.current);
+      
+      // Calculate peak
+      const peak = calculatePeak(currentValues.current);
+      
+      // Update visualization data
+      setVisualizationData({
+        bars: [...currentValues.current],
+        peak
+      });
+    }
+  }, [frequencyData, isActive, sensitivity]);
+  
+  // Process frame in animation loop (fallback when no frequency data)
   const processFrame = () => {
-    // Generate new target values
-    targetValues.current = generateRandomData();
+    // Only use random data if no real frequency data is provided
+    if (!frequencyData) {
+      // Generate new target values
+      targetValues.current = generateRandomData();
+      
+      // Smooth the transition
+      currentValues.current = smoothValues(targetValues.current, currentValues.current);
+      
+      // Calculate peak
+      const peak = calculatePeak(currentValues.current);
+      
+      // Update state with new data
+      setVisualizationData({
+        bars: [...currentValues.current],
+        peak
+      });
+    }
     
-    // Smooth the transition
-    currentValues.current = smoothValues(targetValues.current, currentValues.current);
-    
-    // Calculate peak
-    const peak = calculatePeak(currentValues.current);
-    
-    // Update state with new data
-    setVisualizationData({
-      bars: [...currentValues.current],
-      peak
-    });
-    
-    // Continue animation loop if active
-    if (isActive) {
+    // Continue animation loop if active and no real data
+    if (isActive && !frequencyData) {
       animationRef.current = requestAnimationFrame(processFrame);
     }
   };
   
-  // Start and stop the visualization when isActive changes
+  // Start and stop the visualization when isActive changes (fallback animation)
   useEffect(() => {
-    if (isActive) {
-      // Start animation loop
-      animationRef.current = requestAnimationFrame(processFrame);
-    } else {
-      // Cancel any running animation
-      if (animationRef.current !== null) {
-        cancelAnimationFrame(animationRef.current);
-        animationRef.current = null;
-      }
-      
-      // Reset to base values when inactive
-      const baseValues = Array(BAR_COUNT).fill(BASE_HEIGHT);
-      targetValues.current = baseValues;
-      
-      // Smooth transition to base
-      const smoothTransition = () => {
-        currentValues.current = smoothValues(baseValues, currentValues.current);
-        
-        // Check if values are close enough to base
-        const isSettled = currentValues.current.every(v => Math.abs(v - BASE_HEIGHT) < 0.01);
-        
-        setVisualizationData({
-          bars: [...currentValues.current],
-          peak: visualizationData.peak * 0.9 // Decay peak when inactive
-        });
-        
-        if (!isSettled) {
-          // Continue transitioning until settled
-          requestAnimationFrame(smoothTransition);
+    // Only use animation frame approach when no frequency data is provided
+    if (!frequencyData) {
+      if (isActive) {
+        // Start animation loop
+        animationRef.current = requestAnimationFrame(processFrame);
+      } else {
+        // Cancel any running animation
+        if (animationRef.current !== null) {
+          cancelAnimationFrame(animationRef.current);
+          animationRef.current = null;
         }
-      };
-      
-      // Start smooth transition to base state
-      requestAnimationFrame(smoothTransition);
+        
+        // Reset to base values when inactive
+        const baseValues = Array(BAR_COUNT).fill(BASE_HEIGHT);
+        targetValues.current = baseValues;
+        
+        // Smooth transition to base
+        const smoothTransition = () => {
+          currentValues.current = smoothValues(baseValues, currentValues.current);
+          
+          // Check if values are close enough to base
+          const isSettled = currentValues.current.every(v => Math.abs(v - BASE_HEIGHT) < 0.01);
+          
+          setVisualizationData({
+            bars: [...currentValues.current],
+            peak: visualizationData.peak * 0.9 // Decay peak when inactive
+          });
+          
+          if (!isSettled) {
+            // Continue transitioning until settled
+            requestAnimationFrame(smoothTransition);
+          }
+        };
+        
+        // Start smooth transition to base state
+        requestAnimationFrame(smoothTransition);
+      }
     }
     
     // Cleanup on unmount
@@ -154,7 +195,7 @@ export const useAudioVisualization = (isActive: boolean, sensitivity: number = 5
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [isActive, sensitivity]);
+  }, [isActive, sensitivity, frequencyData]);
   
   return visualizationData;
 }; 
