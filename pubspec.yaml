@@ -46,7 +46,10 @@ dependencies:
   google_mlkit_object_detection: ^0.11.0
   
   # TensorFlow Lite for Flutter
-  tflite_flutter: ^0.10.1
+  tflite_flutter: ^0.9.5
+  
+  # Image processing for TFLite input conversion
+  image: ^4.0.17
   
   # Path provider and permission handler
   path_provider: ^2.1.2

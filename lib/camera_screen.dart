@@ -32,8 +32,11 @@ class _CameraScreenState extends State<CameraScreen> {
   // Text-to-speech for accessibility
   final FlutterTts _flutterTts = FlutterTts();
   
-  // Results from last detection
+  // Store detection results
   List<DetectedObject>? _detectedObjects;
+  
+  // TFLite inference results
+  String _tfliteResults = '';
 
   @override
   void initState() {
@@ -173,6 +176,45 @@ class _CameraScreenState extends State<CameraScreen> {
     return File(imagePath);
   }
 
+  // Convert a saved image file back to CameraImage format for TFLite
+  Future<CameraImage?> _convertFileToCameraImage(XFile file) async {
+    try {
+      // This is a simplified version as actual YUV conversion from a JPEG file is complex
+      // For real implementation, you would need to decompress the JPEG and convert to YUV format
+      // This is a placeholder that enables our workflow to continue
+      return null;
+    } catch (e) {
+      debugPrint('Error converting file to camera image: $e');
+      return null;
+    }
+  }
+  
+  // Run TFLite inference on a camera image
+  Future<void> _runTFLiteInference(CameraImage cameraImage) async {
+    if (!TFLiteService.isModelLoaded) {
+      _tfliteResults = 'TFLite model not loaded';
+      return;
+    }
+    
+    try {
+      // Run inference using our service
+      final inferenceResults = await TFLiteService.runInferenceOnCameraImage(cameraImage);
+      
+      // Process the raw inference results based on your model's output format
+      // This is just a placeholder - you would need to interpret based on your model
+      _tfliteResults = 'Analysis complete';
+      
+      // For example, if your model is a classifier, you might extract the top class:
+      // final topClassIndex = inferenceResults.indexOf(inferenceResults.reduce(max));
+      // _tfliteResults = 'Detected: ${_classLabels[topClassIndex]}';
+      
+      debugPrint('TFLite inference results: $inferenceResults');
+    } catch (e) {
+      debugPrint('Error running TFLite inference: $e');
+      _tfliteResults = 'Error in analysis';
+    }
+  }
+  
   // Detect objects in an image
   Future<List<DetectedObject>> _detectObjects(String imagePath) async {
     try {
@@ -393,6 +435,20 @@ class _CameraScreenState extends State<CameraScreen> {
       debugPrint('Image saved at: $filePath');
       debugPrint('Starting OCR and object detection...');
       
+      // Read the saved image file as XFile for processing
+      final XFile xFile = XFile(filePath);
+      final CameraImage? cameraImage = await _convertFileToCameraImage(xFile);
+      
+      // Run TFLite inference if a camera image could be created
+      if (cameraImage != null) {
+        try {
+          await _runTFLiteInference(cameraImage);
+        } catch (e) {
+          debugPrint('TFLite inference error: $e');
+          _tfliteResults = 'TFLite inference failed';
+        }
+      }
+      
       // Run text recognition and object detection in parallel for efficiency
       final futures = await Future.wait([
         _processImageForText(filePath),
@@ -468,6 +524,14 @@ class _CameraScreenState extends State<CameraScreen> {
           feedbackText = "Text found: ";
         }
         feedbackText += ttsText;
+      }
+      
+      // Add TFLite results if available
+      if (_tfliteResults.isNotEmpty) {
+        if (feedbackText.isNotEmpty) {
+          feedbackText += ". ";
+        }
+        feedbackText += "From TensorFlow analysis: $_tfliteResults";
       }
       
       // Handle case where nothing was detected
