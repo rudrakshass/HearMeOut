@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:camera/camera.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:path/path.dart' as path;
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:google_mlkit_object_detection/google_mlkit_object_detection.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'tflite_service.dart';
 
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
@@ -37,9 +38,25 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   void initState() {
     super.initState();
-    _initDetector();
     _requestPermissions();
+    _initDetector();
     _initTts();
+    _loadTFLiteModel();
+  }
+  
+  // Load the TFLite model from assets
+  Future<void> _loadTFLiteModel() async {
+    try {
+      await TFLiteService.loadModel();
+      if (mounted) {
+        setState(() {
+          // Update UI if needed when model is loaded
+        });
+      }
+      debugPrint('TFLite model loaded: ${TFLiteService.isModelLoaded ? "Success" : "Failed"}');
+    } catch (e) {
+      debugPrint('Error loading TFLite model: $e');
+    }
   }
   
   // Initialize the object detector
@@ -120,6 +137,7 @@ class _CameraScreenState extends State<CameraScreen> {
     _controller?.dispose();
     _textRecognizer.close();
     _objectDetector.close();
+    TFLiteService.dispose();
     _flutterTts.stop();
     super.dispose();
   }
