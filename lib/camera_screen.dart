@@ -65,7 +65,7 @@ class _CameraScreenState extends State<CameraScreen> {
     _requestPermissions();
     _initDetector();
     _initializeTTS();
-    _loadTFLiteModel();
+    _loadEfficientDetModel();
     _initializeFeedbackService();
     _initializeCamera();
   }
@@ -75,16 +75,27 @@ class _CameraScreenState extends State<CameraScreen> {
     await _feedbackService.initialize();
   }
   
-  // Load the TFLite model from assets
-  Future<void> _loadTFLiteModel() async {
+  // Load the EfficientDet-Lite0 model
+  Future<void> _loadEfficientDetModel() async {
     try {
-      await TFLiteService.loadModel();
+      await EfficientDetService.loadModel();
       if (mounted) {
         setState(() {
           // Update UI if needed when model is loaded
         });
       }
-      debugPrint('TFLite model loaded: ${TFLiteService.isModelLoaded ? "Success" : "Failed"}');
+      debugPrint('EfficientDet-Lite0 model loaded: ${EfficientDetService.isModelLoaded ? "Success" : "Failed"}');
+    } catch (e) {
+      debugPrint('Error loading EfficientDet-Lite0 model: $e');
+    }
+  }
+  
+  // Load the TFLite model from assets (legacy)
+  Future<void> _loadTFLiteModel() async {
+    // We no longer need to load this model as we're using EfficientDet-Lite0
+    // This is kept for backward compatibility
+    try {
+      await TFLiteService.loadModel();
     } catch (e) {
       debugPrint('Error loading TFLite model: $e');
     }
@@ -796,6 +807,11 @@ class _CameraScreenState extends State<CameraScreen> {
     _isProcessing = true;
     
     try {
+      if (!EfficientDetService.isModelLoaded) {
+        debugPrint('EfficientDet-Lite0 model not loaded, waiting...');
+        return;
+      }
+      
       final detections = await EfficientDetService.detectObjects(image);
       
       if (mounted) {
@@ -803,7 +819,7 @@ class _CameraScreenState extends State<CameraScreen> {
           _detections = detections;
         });
         
-        // Speak the top detection
+        // Speak the top detection if it's confident enough
         if (detections.isNotEmpty) {
           final topDetection = detections.first;
           if (topDetection.confidence >= _confidenceThreshold) {

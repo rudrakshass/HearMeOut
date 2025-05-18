@@ -29,16 +29,29 @@ class EfficientDetService {
       // Clear any existing interpreter
       _interpreter?.close();
       
-      // Load labels
-      _labels = await File('assets/labels.txt').readAsLines();
+      // Use built-in COCO labels - EfficientDet-Lite0 is trained on COCO
+      _labels = [
+        'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 
+        'boat', 'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 
+        'bird', 'cat', 'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 
+        'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 
+        'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove', 
+        'skateboard', 'surfboard', 'tennis racket', 'bottle', 'wine glass', 'cup', 
+        'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich', 'orange', 
+        'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'couch', 
+        'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse', 
+        'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 
+        'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 
+        'hair drier', 'toothbrush'
+      ];
       
-      // Set up image processor
+      // Set up image processor for EfficientDet-Lite0
       _imageProcessor = ImageProcessorBuilder()
         .add(ResizeOp(inputSize, inputSize, ResizeMethod.BILINEAR))
-        .add(NormalizeOp(0, 255))
+        .add(NormalizeOp(127.5, 127.5)) // EfficientDet-Lite uses [-1,1] normalization
         .build();
       
-      // Load model
+      // Load EfficientDet-Lite0 model directly from assets
       _interpreter = await Interpreter.fromAsset(
         'assets/efficientdet_lite0.tflite',
         options: InterpreterOptions()..threads = 4,
@@ -73,9 +86,8 @@ class EfficientDetService {
     // Prepare input tensor
     final inputBuffer = tensorImage.buffer;
     final inputShape = [1, inputSize, inputSize, 3];
-    final inputType = TfLiteType.float32;
     
-    // Prepare output tensors
+    // Prepare output tensors - EfficientDet-Lite0 has 4 output tensors
     final outputLocations = List.filled(1 * maxResults * 4, 0.0);
     final outputClasses = List.filled(1 * maxResults, 0.0);
     final outputScores = List.filled(1 * maxResults, 0.0);
@@ -89,7 +101,7 @@ class EfficientDetService {
       3: numDetections,
     };
     
-    _interpreter!.run(inputBuffer, outputs);
+    _interpreter!.runForMultipleInputs([inputBuffer.asUint8List()], outputs);
     
     // Process results
     final List<Detection> detections = [];
