@@ -11,6 +11,10 @@ import 'tflite_service.dart';
 import 'text_to_speech_service.dart';
 import 'detection_labels.dart';
 import 'feedback_service.dart';
+import 'efficientdet_service.dart';
+import 'detection_painter.dart';
+import 'flutter_tts/flutter_tts.dart';
+import 'dart:async';
 
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
@@ -42,6 +46,18 @@ class _CameraScreenState extends State<CameraScreen> {
   
   // TFLite inference results
   String _tfliteResults = '';
+  
+  // TTS service
+  final FlutterTts _tts = FlutterTts();
+  Timer? _ttsDebounceTimer;
+  String? _lastSpokenLabel;
+  
+  // Detection results
+  List<Detection> _detections = [];
+  double _confidenceThreshold = 0.6;
+  
+  // Debug mode
+  bool _isDebugMode = false;
 
   @override
   void initState() {
@@ -51,6 +67,7 @@ class _CameraScreenState extends State<CameraScreen> {
     _initializeTTS();
     _loadTFLiteModel();
     _initializeFeedbackService();
+    _initializeCamera();
   }
   
   // Initialize feedback service
@@ -121,7 +138,7 @@ class _CameraScreenState extends State<CameraScreen> {
       // Initialize controller with the first (back) camera with maximum resolution
       _controller = CameraController(
         cameras[0],
-        ResolutionPreset.veryHigh, // Higher resolution for better text recognition
+        ResolutionPreset.medium, // Balanced resolution
         imageFormatGroup: ImageFormatGroup.jpeg,
         enableAudio: false, // Audio not needed for OCR
       );
@@ -140,6 +157,9 @@ class _CameraScreenState extends State<CameraScreen> {
           _isInitialized = true;
         });
       }
+      
+      // Start image stream
+      _controller!.startImageStream(_processCameraImage);
     } catch (e) {
       debugPrint('Error initializing camera: $e');
     }
@@ -152,14 +172,19 @@ class _CameraScreenState extends State<CameraScreen> {
     _textRecognizer.close();
     _objectDetector.close();
     TFLiteService.dispose();
-    _tts.dispose();
+    _tts.stop();
+    _ttsDebounceTimer?.cancel();
     _feedbackService.dispose();
+    EfficientDetService.dispose();
     super.dispose();
   }
   
   // Initialize text-to-speech service
   Future<void> _initializeTTS() async {
-    await _tts.initialize();
+    await _tts.setLanguage('en-US');
+    await _tts.setSpeechRate(0.5);
+    await _tts.setVolume(1.0);
+    await _tts.setPitch(1.0);
   }
 
   // Function to enhance image before processing
@@ -766,6 +791,48 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
+  Future<void> _processCameraImage(CameraImage image) async {
+    if (_isProcessing) return;
+    _isProcessing = true;
+    
+    try {
+      final detections = await EfficientDetService.detectObjects(image);
+      
+      if (mounted) {
+        setState(() {
+          _detections = detections;
+        });
+        
+        // Speak the top detection
+        if (detections.isNotEmpty) {
+          final topDetection = detections.first;
+          if (topDetection.confidence >= _confidenceThreshold) {
+            _speakDetection(topDetection.label);
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error processing image: $e');
+    } finally {
+      _isProcessing = false;
+    }
+  }
+
+  void _speakDetection(String label) {
+    // Debounce TTS
+    if (_ttsDebounceTimer?.isActive ?? false) {
+      _ttsDebounceTimer!.cancel();
+    }
+    
+    // Don't repeat the same label
+    if (label == _lastSpokenLabel) return;
+    
+    _ttsDebounceTimer = Timer(const Duration(seconds: 2), () {
+      _tts.speak(label);
+      _lastSpokenLabel = label;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!_isInitialized || _controller == null) {
@@ -857,6 +924,82 @@ class _CameraScreenState extends State<CameraScreen> {
                 child: CircularProgressIndicator(color: Colors.white),
               ),
             ),
+          
+          // Detection overlay
+          CustomPaint(
+            painter: DetectionPainter(
+              detections: _detections,
+              imageSize: Size(
+                _controller!.value.previewSize!.height,
+                _controller!.value.previewSize!.width,
+              ),
+              confidenceThreshold: _confidenceThreshold,
+            ),
+            size: Size.infinite,
+          ),
+          
+          // Debug overlay
+          if (_isDebugMode)
+            Positioned(
+              top: 40,
+              left: 10,
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.7),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Top 3 Detections:',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                    ..._detections.take(3).map((d) => Text(
+                      '${d.label}: ${(d.confidence * 100).toStringAsFixed(1)}%',
+                      style: TextStyle(color: Colors.white),
+                    )),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Text(
+                          'Confidence: ${(_confidenceThreshold * 100).toStringAsFixed(0)}%',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        Slider(
+                          value: _confidenceThreshold,
+                          onChanged: (value) {
+                            setState(() {
+                              _confidenceThreshold = value;
+                            });
+                          },
+                          min: 0.1,
+                          max: 0.9,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            
+          // Debug mode toggle
+          Positioned(
+            top: 40,
+            right: 10,
+            child: IconButton(
+              icon: Icon(
+                _isDebugMode ? Icons.bug_report : Icons.bug_report_outlined,
+                color: Colors.white,
+              ),
+              onPressed: () {
+                setState(() {
+                  _isDebugMode = !_isDebugMode;
+                });
+              },
+            ),
+          ),
         ],
       ),
     );
