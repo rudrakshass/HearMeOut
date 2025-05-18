@@ -9,7 +9,6 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/services.dart';
 import 'tflite_service.dart';
 import 'text_to_speech_service.dart';
-import 'detection_labels.dart';
 import 'feedback_service.dart';
 
 class CameraScreen extends StatefulWidget {
@@ -42,6 +41,9 @@ class _CameraScreenState extends State<CameraScreen> {
   
   // TFLite inference results
   String _tfliteResults = '';
+  
+  // Scene description for blind users
+  String _sceneDescription = '';
 
   @override
   void initState() {
@@ -58,10 +60,10 @@ class _CameraScreenState extends State<CameraScreen> {
     await _feedbackService.initialize();
   }
   
-  // Load the TFLite model from assets
+  // Load the TFLite model from assets - enhanced version for blind users
   Future<void> _loadTFLiteModel() async {
     try {
-      await TFLiteService.loadModel();
+      await TFLiteService.initialize(modelType: 'efficientdet'); // Use efficientdet for better accuracy
       if (mounted) {
         setState(() {
           // Update UI if needed when model is loaded
@@ -192,49 +194,66 @@ class _CameraScreenState extends State<CameraScreen> {
   // Run TFLite inference on a camera image
   Future<void> _runTFLiteInference(CameraImage cameraImage) async {
     if (!TFLiteService.isModelLoaded) {
-      _tfliteResults = 'TFLite model not loaded';
+      debugPrint('TFLite model not loaded yet');
       return;
     }
     
     try {
-      // Run object detection using our enhanced service with COCO labels
-      final result = await TFLiteService.detectObjectsInImage(cameraImage, threshold: 0.5);
+      // Process image and detect objects with enhanced algorithm
+      final detectionResults = await TFLiteService.detectObjectsInImage(
+        cameraImage,
+        threshold: 0.5, // Confidence threshold
+      );
       
-      // Check for errors
-      if (result.containsKey('error')) {
-        debugPrint('Error in TFLite detection: ${result['error']}');
-        _tfliteResults = 'Error in object detection';
+      if (detectionResults.containsKey('error')) {
+        debugPrint('Error detecting objects: ${detectionResults['error']}');
         return;
       }
       
-      // Store formatted detection summary for the UI
-      if (result.containsKey('summary')) {
-        _tfliteResults = result['summary'] as String;
-      } else {
-        _tfliteResults = 'No objects detected';
+      // Extract detected objects and scene description
+      final detections = detectionResults['detections'] as List<DetectedObject>;
+      _detectedObjects = detections;
+      
+      // Get the detailed scene description for blind users
+      final sceneDescription = detectionResults['summary'] as String;
+      
+      // Update UI
+      if (mounted) {
+        setState(() {
+          _tfliteResults = sceneDescription;
+          _sceneDescription = sceneDescription;
+        });
       }
       
-      // Extract object labels for speech
-      if (result.containsKey('detections')) {
-        final List<TFDetectedObject> detections = result['detections'] as List<TFDetectedObject>;
-        await _speakDetectedObjects(detections);
-      }
+      // Speak detailed scene description
+      _speakSceneDescription(sceneDescription);
       
-      // Log the detection results for debugging
-      debugPrint('TFLite detection results: $result');
+      // Provide haptic feedback when objects are detected
+      if (detections.isNotEmpty) {
+        // Vibrate to alert the user that objects were detected
+        await _feedbackService.vibrate();
+        
+        // If scene has many objects, provide additional feedback
+        if (detections.length > 5) {
+          // Play a beep for significant detections
+          await _feedbackService.playBeep();
+        }
+      }
     } catch (e) {
-      debugPrint('Error running TFLite detection: $e');
-      _tfliteResults = 'Error in object detection analysis';
+      debugPrint('Error running TFLite inference: $e');
     }
   }
   
   // Speak detected objects using enhanced TTS service
-  Future<void> _speakDetectedObjects(List<TFDetectedObject> detections) async {
-    // Extract just the labels from detections
-    final labels = detections.map((d) => d.label).toList();
+  // Speak detailed scene description for blind users
+  Future<void> _speakSceneDescription(String description) async {
+    if (description.isEmpty) {
+      await _tts.speak('No objects detected in view');
+      return;
+    }
     
-    // Speak the detected objects
-    await _tts.speakDetectedObjects(labels);
+    // Speak the detailed scene description
+    await _tts.speak(description);
   }
   
   // Detect objects in an image
@@ -827,7 +846,7 @@ class _CameraScreenState extends State<CameraScreen> {
             ),
           ),
           
-          // Semi-transparent overlay with instructions
+          // Semi-transparent overlay with instructions or scene description
           Positioned(
             top: 40,
             left: 0,
@@ -839,9 +858,12 @@ class _CameraScreenState extends State<CameraScreen> {
                   color: Colors.black54,
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: const Text(
-                  'Tap anywhere to analyze',
-                  style: TextStyle(color: Colors.white, fontSize: 16),
+                child: Text(
+                  _sceneDescription.isEmpty ? 'Tap anywhere to analyze' : _sceneDescription,
+                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                  textAlign: TextAlign.center,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ),

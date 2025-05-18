@@ -9,7 +9,6 @@ import 'dart:async';
 import 'tflite_service.dart';
 import 'text_to_speech_service.dart';
 import 'feedback_service.dart';
-import 'detection_labels.dart';
 
 void main() async {
   // Ensure Flutter is initialized
@@ -30,8 +29,8 @@ void main() async {
     return;
   }
   
-  // Initialize TFLite model
-  await TFLiteService.loadModel();
+  // Initialize TFLite model with enhanced detection for blind users
+  await TFLiteService.initialize(modelType: 'efficientdet');
   
   // Run the app
   runApp(VisionApp(cameras: cameras));
