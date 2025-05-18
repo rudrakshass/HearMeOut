@@ -65,7 +65,7 @@ class _CameraScreenState extends State<CameraScreen> {
     _requestPermissions();
     _initDetector();
     _initializeTTS();
-    _loadEfficientDetModel();
+    _initializeEfficientDet();
     _initializeFeedbackService();
     _initializeCamera();
   }
@@ -75,16 +75,12 @@ class _CameraScreenState extends State<CameraScreen> {
     await _feedbackService.initialize();
   }
   
-  // Load the EfficientDet-Lite0 model
-  Future<void> _loadEfficientDetModel() async {
+  // Initialize EfficientDet-Lite0 model
+  Future<void> _initializeEfficientDet() async {
     try {
+      debugPrint('Loading EfficientDet-Lite0 model...');
       await EfficientDetService.loadModel();
-      if (mounted) {
-        setState(() {
-          // Update UI if needed when model is loaded
-        });
-      }
-      debugPrint('EfficientDet-Lite0 model loaded: ${EfficientDetService.isModelLoaded ? "Success" : "Failed"}');
+      debugPrint('EfficientDet-Lite0 model loaded: ${EfficientDetService.isModelLoaded}');
     } catch (e) {
       debugPrint('Error loading EfficientDet-Lite0 model: $e');
     }
@@ -178,15 +174,24 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   void dispose() {
-    // Dispose of the controller when the widget is disposed
+    // Release camera resources
     _controller?.dispose();
+    
+    // Release ML Kit resources
     _textRecognizer.close();
     _objectDetector.close();
+    
+    // Release TFLite resources
     TFLiteService.dispose();
+    EfficientDetService.dispose();
+    
+    // Release audio resources
     _tts.stop();
     _ttsDebounceTimer?.cancel();
+    
+    // Release feedback service
     _feedbackService.dispose();
-    EfficientDetService.dispose();
+    
     super.dispose();
   }
   
@@ -807,11 +812,14 @@ class _CameraScreenState extends State<CameraScreen> {
     _isProcessing = true;
     
     try {
+      // Check if EfficientDet model is loaded
       if (!EfficientDetService.isModelLoaded) {
         debugPrint('EfficientDet-Lite0 model not loaded, waiting...');
+        _isProcessing = false;
         return;
       }
       
+      // Run object detection using EfficientDet-Lite0
       final detections = await EfficientDetService.detectObjects(image);
       
       if (mounted) {
@@ -819,7 +827,7 @@ class _CameraScreenState extends State<CameraScreen> {
           _detections = detections;
         });
         
-        // Speak the top detection if it's confident enough
+        // Speak the top detection if confidence is high enough
         if (detections.isNotEmpty) {
           final topDetection = detections.first;
           if (topDetection.confidence >= _confidenceThreshold) {
@@ -828,7 +836,7 @@ class _CameraScreenState extends State<CameraScreen> {
         }
       }
     } catch (e) {
-      debugPrint('Error processing image: $e');
+      debugPrint('Error in camera image processing: $e');
     } finally {
       _isProcessing = false;
     }
