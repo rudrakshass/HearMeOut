@@ -134,17 +134,22 @@ class EfficientDetService {
         debugPrint('Input tensor check: ${inputBuffer[0]}, ${inputBuffer[1]}, ${inputBuffer[2]}');
       }
       
-      // Step 3: Allocate output tensors
-      final outputLocations = List<double>.filled(1 * maxDetections * 4, 0); // Bounding boxes [top, left, bottom, right]
-      final outputClasses = List<double>.filled(1 * maxDetections, 0);       // Class indices
-      final outputScores = List<double>.filled(1 * maxDetections, 0);        // Confidence scores
-      final numDetections = List<double>.filled(1, 0);                       // Number of detections
+      // Step 3: Allocate output tensors - match TF Hub EfficientDet-Lite0 outputs
+      // TF Hub model has 4 output tensors:
+      // 0: detection_boxes - shape [1, N, 4] - coordinates in order [ymin, xmin, ymax, xmax]
+      // 1: detection_classes - shape [1, N] - class indices
+      // 2: detection_scores - shape [1, N] - confidence scores
+      // 3: num_detections - shape [1] - number of valid detections
+      final outputLocations = List<double>.filled(1 * maxDetections * 4, 0); 
+      final outputClasses = List<double>.filled(1 * maxDetections, 0);      
+      final outputScores = List<double>.filled(1 * maxDetections, 0);       
+      final numDetections = List<double>.filled(1, 0);                      
       
       // Step 4: Set up output map
       final outputs = {
-        0: outputLocations, // boxes
-        1: outputClasses,   // classes
-        2: outputScores,    // scores
+        0: outputLocations, // detection_boxes
+        1: outputClasses,   // detection_classes
+        2: outputScores,    // detection_scores
         3: numDetections    // num_detections
       };
       
@@ -168,18 +173,18 @@ class EfficientDetService {
         
         final label = _labels![classId];
         
-        // EfficientDet outputs normalized coordinates [top, left, bottom, right]
-        final top = outputLocations[i * 4];
-        final left = outputLocations[i * 4 + 1];
-        final bottom = outputLocations[i * 4 + 2];
-        final right = outputLocations[i * 4 + 3];
+        // TF Hub EfficientDet outputs coordinates in [ymin, xmin, ymax, xmax] order
+        final ymin = outputLocations[i * 4];
+        final xmin = outputLocations[i * 4 + 1];
+        final ymax = outputLocations[i * 4 + 2];
+        final xmax = outputLocations[i * 4 + 3];
         
         // Convert to pixel coordinates
         final rect = Rect.fromLTRB(
-          left * image.width,
-          top * image.height,
-          right * image.width,
-          bottom * image.height,
+          xmin * image.width,
+          ymin * image.height,
+          xmax * image.width,
+          ymax * image.height,
         );
         
         // Create detection
